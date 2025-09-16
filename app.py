@@ -140,12 +140,43 @@ def analyze_conflicts(df, adjacent_thresh=14, spatial_thresh=5000, beam_overlap_
 
 def create_map():
     df = st.session_state['license_df']
-    center_lat = df['SID_LAT'].astype(float).mean()
-    center_long = df['SID_LONG'].astype(float).mean()
+
+     # Add frequency filter sidebar
+    st.sidebar.subheader("Frequency Filter")
+    # Get unique frequency values
+    freq_values = sorted(df['FREQ'].dropna().unique().tolist())
+    
+    # Add "Select All" option
+    select_all = st.sidebar.checkbox("Select All Frequencies", value=True)
+    
+    # Create individual checkboxes for each frequency or use multiselect if many values
+    if select_all:
+        selected_freqs = freq_values
+    else:
+        if len(freq_values) > 10:
+            selected_freqs = st.sidebar.multiselect(
+                "Select Frequencies (MHz)", 
+                options=freq_values,
+                default=freq_values
+            )
+        else:
+            selected_freqs = []
+            for freq in freq_values:
+                if st.sidebar.checkbox(f"{freq} MHz", value=False):
+                    selected_freqs.append(freq)
+    
+    # Filter dataframe based on selected frequencies
+    filtered_df = df[df['FREQ'].isin(selected_freqs)]
+    
+    # Continue with map creation using filtered_df instead of df
+    center_lat = filtered_df['SID_LAT'].astype(float).mean()
+    center_long = filtered_df['SID_LONG'].astype(float).mean()
     m = leafmap.Map(center=(center_lat, center_long), zoom=8)
     marker_cluster = MarkerCluster().add_to(m)
     stations_by_link = {}
-    for idx, row in df.iterrows():
+    
+    # Use filtered_df instead of df in the loop
+    for idx, row in filtered_df.iterrows():
         try:
             lat = float(row['SID_LAT'])
             long = float(row['SID_LONG'])
