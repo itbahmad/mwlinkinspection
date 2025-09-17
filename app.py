@@ -6,7 +6,6 @@ import folium
 from folium.plugins import MarkerCluster
 import os
 import math
-import re
 
 # ---------- HELPER FUNCTIONS ----------
 
@@ -107,15 +106,15 @@ def analyze_conflicts(df, adjacent_thresh=14, spatial_thresh=5000, beam_overlap_
                         overlap2 = angle_diff(bearing21, azim2) <= beam_overlap_margin * beamwidth2
                         beam_overlap = overlap1 and overlap2
                         overlap_detail = (
-                            f"Az1={{azim1:.1f}},Bear12={{bearing12:.1f}},Δ1={{angle_diff(bearing12, azim1):.1f}},BW1={{beamwidth1:.1f}}; "
-                            f"Az2={{azim2:.1f}},Bear21={{bearing21:.1f}},Δ2={{angle_diff(bearing21, azim2):.1f}},BW2={{beamwidth2:.1f}}"
+                            f"Az1={azim1:.1f},Bear12={bearing12:.1f},Δ1={angle_diff(bearing12, azim1):.1f},BW1={beamwidth1:.1f}; "
+                            f"Az2={azim2:.1f},Bear21={bearing21:.1f},Δ2={angle_diff(bearing21, azim2):.1f},BW2={beamwidth2:.1f}"
                         )
                     except Exception as e:
-                        overlap_detail = f"Error: {{e}}"
+                        overlap_detail = f"Error: {e}"
                 else:
                     overlap_detail = "No AZIMUTH info"
                 if polz_reduced:
-                    polarization_effect = f"Interference reduced by polarization (XPD: {{xpd_db}} dB)"
+                    polarization_effect = f"Interference reduced by polarization (XPD: {xpd_db} dB)"
                 else:
                     polarization_effect = "No polarization discrimination"
                 results.append({
@@ -139,88 +138,10 @@ def analyze_conflicts(df, adjacent_thresh=14, spatial_thresh=5000, beam_overlap_
                 })
     return pd.DataFrame(results)
 
-def filter_dataframe_by_query(df, query):
-    """
-    Filter dataframe based on natural language query
-    """
-    if not query:
-        return df
-        
-    # Convert query to lowercase for case-insensitive matching
-    query = query.lower()
-    
-    # Define patterns for common query types
-    radius_pattern = r'within\s+(\d+(?:\.\d+)?)\s*(?:km|kilometer|kilometers|klm)?\s+(?:radius\s+)?(?:of|from)\s+(?:site|station)?\s*([a-zA-Z0-9]+)'
-    freq_range_pattern = r'(?:with\s+)?freq(?:uency)?\s+(?:between|from)?\s*(\d+(?:\.\d+)?)\s*(?:to|until|and|-)?\s*(\d+(?:\.\d+)?)'
-    site_pattern = r'(?:site|station)\s+([a-zA-Z0-9]+)'
-    city_pattern = r'(?:in|at|near)\s+(?:city|kota)?\s*([a-zA-Z]+(?:\s+[a-zA-Z]+)*)'
-    
-    filtered_df = df.copy()
-    
-    # Handle radius search
-    radius_match = re.search(radius_pattern, query)
-    if radius_match:
-        radius_km = float(radius_match.group(1)) * 1000  # Convert to meters
-        site_id = radius_match.group(2)
-        
-        # Find the reference site
-        ref_site = df[df['STN_NAME'].str.contains(site_id, case=False) | 
-                     df['LINK_ID'].str.contains(site_id, case=False)]
-        
-        if not ref_site.empty:
-            ref_lat = ref_site.iloc[0]['SID_LAT']
-            ref_long = ref_site.iloc[0]['SID_LONG']
-            
-            # Calculate distances for all stations
-            distances = []
-            for idx, row in filtered_df.iterrows():
-                try:
-                    dist = haversine(ref_lat, ref_long, row['SID_LAT'], row['SID_LONG'])
-                    distances.append(dist)
-                except:
-                    distances.append(float('inf'))
-            
-            filtered_df['distance_to_ref'] = distances
-            filtered_df = filtered_df[filtered_df['distance_to_ref'] <= radius_km]
-            filtered_df = filtered_df.drop(columns=['distance_to_ref'])
-    
-    # Handle frequency range search
-    freq_match = re.search(freq_range_pattern, query)
-    if freq_match:
-        min_freq = float(freq_match.group(1))
-        max_freq = float(freq_match.group(2)) if freq_match.group(2) else min_freq + 100
-        filtered_df = filtered_df[(filtered_df['FREQ'] >= min_freq) & (filtered_df['FREQ'] <= max_freq)]
-    
-    # Handle site search
-    site_match = re.search(site_pattern, query)
-    if site_match and not radius_match:  # Only if not already handled by radius search
-        site_id = site_match.group(1)
-        filtered_df = filtered_df[filtered_df['STN_NAME'].str.contains(site_id, case=False) | 
-                                 filtered_df['LINK_ID'].str.contains(site_id, case=False)]
-    
-    # Handle city search
-    city_match = re.search(city_pattern, query)
-    if city_match:
-        city_name = city_match.group(1)
-        filtered_df = filtered_df[filtered_df['CITY'].str.contains(city_name, case=False)]
-    
-    return filtered_df
-
 def create_map():
     df = st.session_state['license_df']
 
-    # Add search query sidebar
-    st.sidebar.subheader("Natural Language Filter")
-    search_query = st.sidebar.text_input("Enter query (e.g., 'show stations within 2 km of site ABC345' or 'stations with freq 7000 until 7100')")
-    
-    if search_query:
-        df = filter_dataframe_by_query(df, search_query)
-        if df.empty:
-            st.sidebar.warning("No stations match your query. Please try a different search.")
-            return
-        st.sidebar.success(f"Found {{len(df)}} stations matching your query.")
-
-    # Add frequency filter sidebar
+     # Add frequency filter sidebar
     st.sidebar.subheader("Frequency Filter")
     # Get unique frequency values
     freq_values = sorted(df['FREQ'].dropna().unique().tolist())
@@ -241,7 +162,7 @@ def create_map():
         else:
             selected_freqs = []
             for freq in freq_values:
-                if st.sidebar.checkbox(f"{{freq}} MHz", value=False):
+                if st.sidebar.checkbox(f"{freq} MHz", value=False):
                     selected_freqs.append(freq)
     
     # Filter dataframe based on selected frequencies
@@ -262,16 +183,16 @@ def create_map():
             if np.isnan(lat) or np.isnan(long):
                 continue
             popup_html = f"""
-            <h4>{{row['STN_NAME']}}</h4>
-            <b>Client:</b> {{row['CLNT_NAME']}}<br>
-            <b>License Number:</b> {{row['CURR_LIC_NUM']}}<br>
-            <b>Link ID:</b> {{row['LINK_ID']}}<br>
-            <b>TX Frequency:</b> {{row['FREQ']}} MHz<br>
-            <b>RX Frequency:</b> {{row['FREQ_PAIR']}} MHz<br>
-            <b>Bandwidth:</b> {{row['BWIDTH']}} MHz<br>
-            <b>Equipment Model:</b> {{row['EQ_MDL']}}<br>
-            <b>City:</b> {{row['CITY']}}<br>
-            <b>Polarization:</b> {{row.get('MASTER_PLZN_CODE', '')}}<br>
+            <h4>{row['STN_NAME']}</h4>
+            <b>Client:</b> {row['CLNT_NAME']}<br>
+            <b>License Number:</b> {row['CURR_LIC_NUM']}<br>
+            <b>Link ID:</b> {row['LINK_ID']}<br>
+            <b>TX Frequency:</b> {row['FREQ']} MHz<br>
+            <b>RX Frequency:</b> {row['FREQ_PAIR']} MHz<br>
+            <b>Bandwidth:</b> {row['BWIDTH']} MHz<br>
+            <b>Equipment Model:</b> {row['EQ_MDL']}<br>
+            <b>City:</b> {row['CITY']}<br>
+            <b>Polarization:</b> {row.get('MASTER_PLZN_CODE', '')}<br>
             """
             folium.Marker(
                 location=[lat, long],
@@ -290,15 +211,15 @@ def create_map():
                     'far_end': row.get('STASIUN_LAWAN', '')
                 })
         except Exception as e:
-            st.error(f"Error adding marker for {{row['STN_NAME']}}: {{e}}")
+            st.error(f"Error adding marker for {row['STN_NAME']}: {e}")
     for link_id, stations in stations_by_link.items():
         if len(stations) == 2:
             station1 = stations[0]
             station2 = stations[1]
             link_popup = f"""
-            <h4>Link ID: {{link_id}}</h4>
-            <b>Station 1:</b> {{station1['name']}}<br>
-            <b>Station 2:</b> {{station2['name']}}<br>
+            <h4>Link ID: {link_id}</h4>
+            <b>Station 1:</b> {station1['name']}<br>
+            <b>Station 2:</b> {station2['name']}<br>
             """
             folium.PolyLine(
                 locations=[[station1['lat'], station1['long']], [station2['lat'], station2['long']]],
@@ -340,7 +261,7 @@ def load_sample_data():
             st.session_state['license_df'] = license_df
             st.success("Sample license data loaded!")
     except Exception as e:
-        st.error(f"Error loading sample license data: {{e}}")
+        st.error(f"Error loading sample license data: {e}")
     try:
         inspection_path = 'inspectionreport.csv'
         if os.path.exists(inspection_path):
@@ -354,7 +275,7 @@ def load_sample_data():
             st.session_state['inspection_df'] = inspection_df
             st.success("Sample inspection data loaded!")
     except Exception as e:
-        st.error(f"Error loading sample inspection data: {{e}}")
+        st.error(f"Error loading sample inspection data: {e}")
 
 def extract_screenshot_info(df):
     st.subheader("Inspection Screenshots Data")
@@ -386,7 +307,7 @@ file_types = {
     "Screenshots Database": "screenshots_df"
 }
 upload_type = st.selectbox("Select the type of file to upload", list(file_types.keys()))
-upload_file = st.file_uploader(f"Upload {{upload_type}} (CSV or XLSX)", type=["csv", "xlsx"])
+upload_file = st.file_uploader(f"Upload {upload_type} (CSV or XLSX)", type=["csv", "xlsx"])
 
 if upload_file is not None:
     try:
@@ -399,10 +320,12 @@ if upload_file is not None:
             df = df.rename(columns={'EPQ_MDL': 'EQ_MDL'})
         if 'BWIDTH' in df.columns:
             df['BWIDTH'] = df['BWIDTH'].astype(float) / 1000
+        if 'BWIDTH_Actual' in df.columns:
+            df['BWIDTH_Actual'] = df['BWIDTH_Actual'].astype(float) / 1000
         st.session_state[file_types[upload_type]] = df
-        st.success(f"{{upload_type}} uploaded successfully!")
+        st.success(f"{upload_type} uploaded successfully!")
     except Exception as e:
-        st.error(f"Error loading file: {{e}}")
+        st.error(f"Error loading file: {e}")
 
 if (st.session_state['license_df'] is None or st.session_state['inspection_df'] is None) and st.button("Load Sample Data"):
     load_sample_data()
@@ -414,7 +337,7 @@ if st.session_state['license_df'] is not None and st.session_state['inspection_d
             st.session_state['relations_created'] = True
             st.success("Relations created successfully!")
         except Exception as e:
-            st.error(f"Error creating relations: {{e}}")
+            st.error(f"Error creating relations: {e}")
 
 if st.session_state['license_df'] is not None:
     if st.button("Analyze Potential Interference"):
@@ -431,7 +354,7 @@ if st.session_state['conflicts'] is not None:
     st.subheader("Potential Interference Analysis Results")
     if len(st.session_state['conflicts']) > 0:
         st.dataframe(st.session_state['conflicts'])
-        st.info(f"{{len(st.session_state['conflicts'])}} potential conflicts detected.")
+        st.info(f"{len(st.session_state['conflicts'])} potential conflicts detected.")
     else:
         st.success("No conflicts found with current criteria.")
 
@@ -445,21 +368,6 @@ if st.session_state['inspection_df'] is not None:
 if st.session_state['license_df'] is not None:
     st.subheader("License Database Table Preview")
     st.dataframe(st.session_state['license_df'])
-
-# Add help section for natural language queries
-st.sidebar.subheader("Query Examples")
-st.sidebar.markdown("""
-### Examples of natural language queries:
-- Show stations within 2 km of site ABC345
-- Stations with frequency 7000 until 7100
-- Stations in city Jakarta
-- Show site XYZ789
-
-### Example in Bahasa Indonesia:
-- Tampilkan stasiun dalam radius 2 km dari site ABC345
-- Stasiun dengan frekuensi 7000 sampai 7100
-- Stasiun di kota Jakarta
-""")
 
 # ---------- FOOTER ----------
 st.markdown("""
